@@ -4,7 +4,7 @@ package com.example.tutorial.stokvel;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.swing.tree.RowMapper;
+import org.springframework.jdbc.core.RowMapper;
 import com.example.tutorial.stokvel.Dtos.StokvelSummary;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,7 +59,7 @@ public class StokvelService {
         return jdbc.query(SUMMARY_SQL + " ORDER BY s.id", SUMMARY_MAPPER);
     }
 
-    public Dtos.StokvelDetails get(long id) {
+    public Dtos.StokvelDetail get(long id) {
         List<StokvelSummary> found = jdbc.query(SUMMARY_SQL + " WHERE s.id = ?", SUMMARY_MAPPER, id);
         if (found.isEmpty()) throw new NotFoundException("Stokvel " + id + " not found");
 
@@ -77,6 +77,6 @@ public class StokvelService {
                 WHERE m.stokvel_id = ?
                 ORDER BY m.id
                 """, (rs, i) -> new Dtos.MemberView(rs.getLong("id"), rs.getString("name"), rs.getLong("wallet_id"), rs.getLong("contributed")), id);
-        return new Dtos.StokvelDetails(found.get(0), members);
+        return new Dtos.StokvelDetail(found.get(0), members);
     }
 }

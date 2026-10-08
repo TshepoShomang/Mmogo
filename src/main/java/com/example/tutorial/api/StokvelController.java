@@ -2,31 +2,69 @@ package com.example.tutorial.api;
 
 
 import com.example.tutorial.ledger.InsufficientFundsException;
-import com.example.tutorial.stokvel.NotFoundException;
+import com.example.tutorial.ledger.PostingResult;
+import com.example.tutorial.stokvel.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
 public class StokvelController {
-    public record ErrorBody(String error, String message) {}
+    private final StokvelService stokvels;
+    private final PaymentService payments;
+    private final ReportService reports;
 
-    @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<ErrorBody> notFound(NotFoundException e) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorBody("NOT_FOUND", e.getMessage()));
+    public StokvelController(StokvelService stokvels, PaymentService payments, ReportService reports) {
+        this.stokvels = stokvels;
+        this.payments = payments;
+        this.reports = reports;
     }
 
-    @ExceptionHandler(IllegalArgumentException.class) // also covers UnbalancedTransactionException
-    public ResponseEntity<ErrorBody> badRequest(IllegalArgumentException e) {
-        return ResponseEntity.badRequest().body(new ErrorBody("BAD_REQUEST", e.getMessage()));
+    @PostMapping("/stokvels")
+    public Dtos.StokvelSummary create(@RequestBody Dtos.CreateStokvelRequest req) {
+        return stokvels.create(req.name(), req.contributionCents());
     }
 
-    @ExceptionHandler(InsufficientFundsException.class)
-    public ResponseEntity<ErrorBody> insufficient(InsufficientFundsException e) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-                .body(new ErrorBody("INSUFFICIENT_FUNDS", e.getMessage()));
+    @GetMapping("/stokvels")
+    public List<Dtos.StokvelSummary> list() {
+        return stokvels.list();
+    }
+
+    @GetMapping("/stokvels/{id}")
+    public Dtos.StokvelDetail get(@PathVariable("id") long id) {
+        return stokvels.get(id);
+    }
+
+    @PostMapping("/stokvels/{id}/members")
+    public Map<String, Long> addMember(@PathVariable("id") long id, @RequestBody Dtos.AddMemberRequest req) {
+        return Map.of("memberId", stokvels.addMember(id, req.name()));
+    }
+
+    @PostMapping("/stokvels/{id}/contributions")
+    public PostingResult contribute(@PathVariable("id") long id,
+                                    @RequestHeader("Idempotency-Key") String key,
+                                    @RequestBody Dtos.MoneyRequest req) {
+        return payments.contribute(id, req.memberId(), req.amountCents(), key);
+    }
+
+    @PostMapping("/stokvels/{id}/payouts")
+    public PostingResult payout(@PathVariable("id") long id,
+                                @RequestHeader("Idempotency-Key") String key,
+                                @RequestBody Dtos.MoneyRequest req) {
+        return payments.payout(id, req.memberId(), req.amountCents(), key);
+    }
+
+    @GetMapping("/members/{memberId}/statement")
+    public List<Dtos.EntryView> statement(@PathVariable("memberId") long memberId) {
+        return reports.memberStatement(memberId);
+    }
+
+    @GetMapping("/ledger/integrity")
+    public Dtos.IntegrityReport integrity() {
+        return reports.integrity();
     }
 }

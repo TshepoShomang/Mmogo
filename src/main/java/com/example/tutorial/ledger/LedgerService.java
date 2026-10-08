@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static sun.security.util.KeyUtil.validate;
+
 
 @Service
 public class LedgerService {
@@ -26,7 +26,7 @@ public class LedgerService {
     }
 
     @Transactional
-    public PostingResult post(String idempotencyKey, String type, String description, List<Line> lines) throws UnbalancedTransactionException {
+    public PostingResult post(String idempotencyKey, String type, String description, List<Line> lines) {
         validate(idempotencyKey, lines);
 
         List<Long> created = jdbc.queryForList(
@@ -89,7 +89,7 @@ public class LedgerService {
         return new PostingResult(txTd, false);
     }
 
-    private void validate(String idempotencyKey, List<Line> lines) throws UnbalancedTransactionException {
+    private void validate(String idempotencyKey, List<Line> lines) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new IllegalArgumentException("An idempotency key is required");
         }
@@ -103,14 +103,14 @@ public class LedgerService {
 
         for (Line line : lines) {
             if (line.amountCents() <= 0) {
-                throw new UnbalancedTransactionException("Line amounts must be positive");
+                throw new RuntimeException("Line amounts must be positive");
             }
             if (line.direction() == Direction.D) debits += line.amountCents();
             else credits += line.amountCents();
         }
 
         if (debits != credits) {
-            throw new UnbalancedTransactionException(
+            throw new RuntimeException(
                     "Debits (" + debits + ") must be equal to credits (" + credits + ")"
             );
         }

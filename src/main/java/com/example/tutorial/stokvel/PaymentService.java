@@ -12,7 +12,7 @@ import java.util.List;
 @Service
 public class PaymentService {
 
-    private record Account(long pool, long clearing, long wallet){}
+    private record Accounts(long pool, long clearing, long wallet){}
 
     private final LedgerService ledger;
     private final JdbcTemplate jdbc;

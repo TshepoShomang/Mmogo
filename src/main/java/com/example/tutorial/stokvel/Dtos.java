@@ -17,7 +17,7 @@ public final class Dtos {
 
     public record MemberView(long id, String name, long walletAccountId, long contributionCents) {}
 
-    public record StokvelDetails(StokvelSummary stokvel, List<MemberView> members) {}
+    public record StokvelDetail(StokvelSummary stokvel, List<MemberView> members) {}
 
     public record EntryView(long entryId, long transactionId, String type, String description, String direction, long amountCents, Instant createdAt) {}
 
