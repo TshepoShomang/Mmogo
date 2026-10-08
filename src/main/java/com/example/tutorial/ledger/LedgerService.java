@@ -47,7 +47,7 @@ public class LedgerService {
         List<Long> accountIds = lines.stream().map(Line::accountId).distinct().sorted().toList();
 
         List<LockedAccount> locked = named.query(
-          "SELECT id, balance_cents, allow_negetive FROM accounts " +
+          "SELECT id, balance_cents, allow_negative FROM accounts " +
           "WHERE id IN (:ids) ORDER BY id FOR UPDATE",
           new MapSqlParameterSource("ids", accountIds), (rs, i) -> new LockedAccount(rs.getLong("id"), rs.getLong("balance_cents"), rs.getBoolean("allow_negative"))
         );
