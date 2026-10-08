@@ -15,8 +15,8 @@ public class StokvelService {
 
     private static final String SUMMARY_SQL = """
             SELECT s.id, s.name, s.contribution_cents, p.balance_cents AS pool, c.balance_cents AS clearing
-            FROM stokvel s JOIN account p ON p.stokvel_id = s.id AND p.type = 'POOL'
-            JOIN account c ON c.stokvel_id = s.id AND c.type = 'CLEARING'
+            FROM stokvels s JOIN accounts p ON p.stokvel_id = s.id AND p.type = 'POOL'
+            JOIN accounts c ON c.stokvel_id = s.id AND c.type = 'CLEARING'
             """;
 
     private static final RowMapper<StokvelSummary> SUMMARY_MAPPER = (rs, i) -> new StokvelSummary(
