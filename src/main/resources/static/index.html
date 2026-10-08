@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mmogo - Stokvel Ledger</title>
+    <style>
+        [hidden] { display: none !important; }
+        body { font-family: system-ui, sans-serif; max-width: 920px; margin: 2rem auto; padding: 0 1rem; color: #1f2937; }
+        section { border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+        input, select, button { padding: .5rem; margin: .25rem .25rem .25rem 0; font-size: 1rem; }
+        button { cursor: pointer; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #e5e7eb; padding: .4rem; text-align: left; }
+        pre { background: #111827; color: #d1d5db; padding: 1rem; border-radius: 8px; overflow: auto; max-height: 240px; }
+        .result { font-weight: 600; margin-top: .5rem; }
+        .balances span { margin-right: 1.5rem; }
+    </style>
+</head>
+<body>
+<h1>Mmogo</h1>
+<p>A mini stokvel ledger.</p>
+
+<section>
+    <h2>1. Create a stokvel</h2>
+    <input id="sName" placeholder="Name, e.g. Ubuntu Savers">
+    <input id="sAmount" type="number" step="0.01" placeholder="Monthly contribution (R)">
+    <button onclick="createStokvel()">Create</button>
+    <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Contribution</th><th>Pool</th><th></th></tr></thead>
+        <tbody id="stokvels"></tbody>
+    </table>
+</section>
+
+<section id="detail" hidden>
+    <h2 id="detailTitle"></h2>
+    <p class="balances">
+        <span>Pool: <strong id="pool"></strong></span>
+        <span>Clearing: <strong id="clearing"></strong></span>
+    </p>
+
+    <h3>Members</h3>
+    <input id="mName" placeholder="Member name">
+    <button onclick="addMember()">Add member</button>
+    <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Contributed</th><th></th></tr></thead>
+        <tbody id="members"></tbody>
+    </table>
+
+    <h3>Move money</h3>
+    <select id="memberSelect"></select>
+    <input id="amount" type="number" step="0.01" placeholder="Amount (R)">
+    <button onclick="move('contributions')">Contribute</button>
+    <button onclick="move('payouts')">Payout</button>
+    <button onclick="sendLast()" title="Re-sends the previous request using the SAME idempotency key">Resend last request</button>
+    <div id="result" class="result"></div>
+
+    <h3>Statement</h3>
+    <table>
+        <thead><tr><th>Tx</th><th>Type</th><th>D/C</th><th>Amount</th><th>Time</th></tr></thead>
+        <tbody id="statement"></tbody>
+    </table>
+</section>
+
+<section>
+    <h2>Ledger integrity</h2>
+    <button onclick="integrity()">Run check</button>
+    <span id="integrity"></span>
+</section>
+
+<h3>Request log</h3>
+<pre id="log"></pre>
+
+<script>
+    const $ = id => document.getElementById(id);
+    const rands = c => (c / 100).toLocaleString('en-ZA', { style: 'currency', currency: 'ZAR' });
+    const toCents = v => Math.round(parseFloat(v) * 100);
+    const esc = s => String(s).replace(/[&<>"']/g,
+      ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
+    let selected = null;
+    let lastRequest = null;
+
+    function log(text) {
+      $('log').textContent = text + '\n\n' + $('log').textContent;
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch('/api' + path, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+      });
+      const body = await res.json().catch(() => ({}));
+      log(`${options.method || 'GET'} ${path} -> ${res.status}\n${JSON.stringify(body, null, 2)}`);
+      if (!res.ok) throw new Error(body.message || res.statusText);
+      return body;
+    }
+
+    async function loadStokvels() {
+      const list = await api('/stokvels');
+      $('stokvels').innerHTML = list.map(s => `
+        <tr><td>${s.id}</td><td>${esc(s.name)}</td><td>${rands(s.contributionCents)}</td>
+            <td>${rands(s.poolBalanceCents)}</td>
+            <td><button onclick="selectStokvel(${s.id})">Open</button></td></tr>`).join('');
+    }
+
+    async function createStokvel() {
+      await api('/stokvels', {
+        method: 'POST',
+        body: JSON.stringify({ name: $('sName').value, contributionCents: toCents($('sAmount').value) })
+      });
+      await loadStokvels();
+    }
+
+    async function selectStokvel(id) {
+      selected = id;
+      const d = await api('/stokvels/' + id);
+      $('detail').hidden = false;
+      $('detailTitle').textContent = d.stokvel.name;
+      $('pool').textContent = rands(d.stokvel.poolBalanceCents);
+      $('clearing').textContent = rands(d.stokvel.clearingBalanceCents);
+      $('members').innerHTML = d.members.map(m => `
+        <tr><td>${m.id}</td><td>${esc(m.name)}</td><td>${rands(m.contributedCents)}</td>
+            <td><button onclick="statement(${m.id})">Statement</button></td></tr>`).join('');
+      $('memberSelect').innerHTML = d.members.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    }
+
+    async function addMember() {
+      await api(`/stokvels/${selected}/members`, { method: 'POST', body: JSON.stringify({ name: $('mName').value }) });
+      $('mName').value = '';
+      await selectStokvel(selected);
+    }
+
+    async function move(kind) {
+      lastRequest = {
+        path: `/stokvels/${selected}/${kind}`,
+        key: crypto.randomUUID(),                      // a NEW key per user action
+        body: JSON.stringify({ memberId: Number($('memberSelect').value), amountCents: toCents($('amount').value) })
+      };
+      await sendLast();
+    }
+
+    async function sendLast() {
+      if (!lastRequest) return;
+      try {
+        const r = await api(lastRequest.path, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': lastRequest.key },
+          body: lastRequest.body
+        });
+        $('result').textContent = r.replayed
+          ? `Replayed: same key, so no new ledger effect (transaction ${r.transactionId})`
+          : `Posted as transaction ${r.transactionId}`;
+      } catch (e) {
+        $('result').textContent = 'Rejected: ' + e.message;
+      }
+      await selectStokvel(selected);
+      await loadStokvels();
+    }
+
+    async function statement(memberId) {
+      const rows = await api(`/members/${memberId}/statement`);
+      $('statement').innerHTML = rows.map(r => `
+        <tr><td>${r.transactionId}</td><td>${r.type}</td><td>${r.direction}</td>
+            <td>${rands(r.amountCents)}</td><td>${new Date(r.createdAt).toLocaleString()}</td></tr>`).join('');
+    }
+
+    async function integrity() {
+      const r = await api('/ledger/integrity');
+      $('integrity').textContent =
+        ` Debits ${rands(r.totalDebitsCents)} | Credits ${rands(r.totalCreditsCents)} | ` +
+        `${r.balanced ? 'BALANCED' : 'IMBALANCED'} | accounts drifting: ${r.driftingAccounts}`;
+    }
+
+    window.addEventListener('unhandledrejection', e => alert(e.reason.message));
+    loadStokvels();
+</script>
+</body>
+</html>
