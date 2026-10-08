@@ -35,10 +35,10 @@ public class StokvelService {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Name is not entered");
         if (contributionCents <= 0) throw new IllegalArgumentException("Contribution should be greater than zero");
 
-      Long id = jdbc.queryForObject("INSERT INTO stokvels (name, contribution_cents) VALUES (?, ?)", Long.class, name.trim(), contributionCents);
+      Long id = jdbc.queryForObject("INSERT INTO stokvels (name, contribution_cents) VALUES (?, ?) RETURNING id", Long.class, name.trim(), contributionCents);
 
-      jdbc.update("INSERT INTO accounts (stokvel_id, type, allow_negetive) VALUES (?, 'POOL', 'FALSE')", id);
-      jdbc.update("INSERT INTO accounts (stokvel_id, type, allow_negetive) VALUES (?, 'CLEARING', 'FALSE')", id);
+      jdbc.update("INSERT INTO accounts (stokvel_id, type, allow_negative) VALUES (?, 'POOL', 'FALSE')", id);
+      jdbc.update("INSERT INTO accounts (stokvel_id, type, allow_negative) VALUES (?, 'CLEARING', 'FALSE')", id);
 
       return get(id).stokvel();
     }
@@ -69,8 +69,8 @@ public class StokvelService {
                     COALESCE((
                         SELECT SUM(e.amount_cents)
                         FROM ledger_entries e
-                        JOIN ledger_transactions t ON t.id = e.transition_id
-                        WHERE e.account_id = w.id AND e.direction = 'C' AND t.type = 'CONTRIBUTION
+                        JOIN ledger_transaction t ON t.id = e.transaction_id
+                        WHERE e.account_id = w.id AND e.direction = 'C' AND t.type = 'CONTRIBUTION'
                     ), 0) AS contributed
                 FROM members m
                 JOIN accounts w ON w.member_id = m.id
